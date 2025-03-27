@@ -1,0 +1,4 @@
+type = module
+name = Image ALT from File entity
+description = Alternatie text for images that is stored in file entities.
+backdrop = 1.x

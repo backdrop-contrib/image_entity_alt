@@ -1,0 +1,75 @@
+<?php
+/**
+ * @file
+ * Alternatie text for images that is stored in file entities.
+ */
+
+/**
+ * Prepare variables for field templates.
+ * - Updates the ALT text on image fields to pull from the file entity field.
+ * - Falls back to
+ *
+ * @see field.tpl.php
+ */
+function image_entity_alt_preprocess_field(&$variables) {
+  // @todo - build a UI to select all vs some fields.
+  if ($variables['element']['#field_type'] == 'image') {
+    $lang = LANGUAGE_NONE;
+
+    // @todo - build a UI to specify a field to use for 'field_alt'.
+    $alt = $variables['element']['#items'][0]['field_alt'][$lang][0]['safe_value'];
+    $variables['items'][0]['#item']['alt'] = $alt;
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function image_entity_alt_form_node_form_alter(&$form, &$form_state) {
+  // @todo - build a UI to select all vs some fields.
+  $image_fields = field_read_fields(array('type' => 'image'));
+  $image_field_names = array_keys($image_fields);
+  $form['image_entity_alts'] = array(
+    '#type' => 'value',
+    '#value' => array_fill_keys($image_field_names, ''),
+  );
+
+  $lang = LANGUAGE_NONE;
+
+  $form_keys = array_keys($form);
+  foreach ($form_keys as $key) {
+    $field_name = $key;
+    if (in_array($field_name, $image_field_names)) {
+      foreach ($form[$field_name][$lang] as $delta => $image) {
+        if (isset($image['#entity_type'])) {
+          // @todo - build a UI to specify a field to use for 'field_alt'.
+          $file_alt = $image['#default_value']['field_alt'][$lang][0]['safe_value'];
+          $form['image_entity_alts']['#value'][$field_name] = $file_alt;
+          $form[$field_name][$lang][$delta]['#default_value']['alt'] = $file_alt;
+        }
+      }
+    }
+  }
+
+  $form['#validate'][] = 'image_entity_alt_form_node_form_validate';
+}
+
+/**
+ * Validate handler. Do not save File entity values in node instance.
+ *
+ * @see image_entity_alt_form_node_form_alter.
+ */
+function image_entity_alt_form_node_form_validate(&$form, &$form_state) {
+  $lang = LANGUAGE_NONE;
+  $image_entity_alts = $form_state['values']['image_entity_alts'];
+
+  $value_keys = array_keys($form_state['values']);
+  foreach ($value_keys as $key) {
+    if (array_key_exists($key, $image_entity_alts)) {
+      $submitted = trim($form_state['values'][$key][$lang][0]['alt']);
+      if ($submitted == trim($image_entity_alts[$key])) {
+        $form_state['values'][$key][$lang][0]['alt'] = '';
+      }
+    }
+  }
+}
