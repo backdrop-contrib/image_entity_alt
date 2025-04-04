@@ -41,7 +41,7 @@ function image_entity_alt_form_node_form_alter(&$form, &$form_state) {
     $field_name = $key;
     if (in_array($field_name, $image_field_names)) {
       foreach ($form[$field_name][$lang] as $delta => $image) {
-        if (isset($image['#entity_type'])) {
+        if (isset($image['#default_value']['field_alt'])) {
           // @todo - build a UI to specify a field to use for 'field_alt'.
           $file_alt = $image['#default_value']['field_alt'][$lang][0]['safe_value'];
           $form['image_entity_alts']['#value'][$field_name] = $file_alt;
