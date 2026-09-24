@@ -179,3 +179,22 @@ function image_entity_alt_form_field_ui_field_edit_form_alter(&$form, &$form_sta
     );
   }
 }
+
+/**
+ * Implements hook_file_view_alter().
+ */
+function image_entity_alt_file_view_alter(&$build) {
+  $file = $build['#file'];
+  if ($file->type !== 'image' || empty($build['file'])) {
+    return;
+  }
+  $alt = image_entity_alt_file_alt($file, $build['#language']);
+  // Core's default file display reuses the image field formatter.
+  if (isset($build['file']['#item']) && (!isset($build['file']['#item']['alt']) || $build['file']['#item']['alt'] === '')) {
+    $build['file']['#item']['alt'] = $alt;
+  }
+  // Also support the legacy file_image formatter.
+  if (isset($build['file']['#alt']) && $build['file']['#alt'] === '') {
+    $build['file']['#alt'] = $alt;
+  }
+}
