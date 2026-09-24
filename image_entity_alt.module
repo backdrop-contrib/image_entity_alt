@@ -118,3 +118,32 @@ function image_entity_alt_file_alt($file, $langcode = NULL) {
   $items = field_get_items('file', $file, image_entity_alt_field_name(), $langcode);
   return isset($items[0]['value']) ? $items[0]['value'] : '';
 }
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function image_entity_alt_form_filter_format_editor_image_form_alter(&$form, &$form_state) {
+  $form['#after_build'][] = 'image_entity_alt_editor_after_build';
+}
+
+/**
+ * Prefills editor ALT after the managed file element resolves the selected file.
+ */
+function image_entity_alt_editor_after_build($form, &$form_state) {
+  $fid = isset($form['image']['fid']['#value']) ? $form['image']['fid']['#value'] : NULL;
+  if (is_array($fid)) {
+    $fid = isset($fid['fid']) ? $fid['fid'] : reset($fid);
+  }
+  // Preserve submitted text, including an explicitly empty decorative ALT.
+  if (!$fid || $form['alt']['#value'] !== '' || isset($form_state['input']['attributes']['alt'])) {
+    return $form;
+  }
+  $file = file_load($fid);
+  if ($file) {
+    $alt = image_entity_alt_file_alt($file);
+    $form['alt']['#default_value'] = $alt;
+    $form['alt']['#value'] = $alt;
+    form_set_value($form['alt'], $alt, $form_state);
+  }
+  return $form;
+}
