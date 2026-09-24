@@ -1,0 +1,130 @@
+<?php
+
+/**
+ * @file
+ * Integration coverage for file-entity ALT fallbacks.
+ */
+class ImageEntityAltTestCase extends BackdropWebTestCase {
+  protected $image;
+  protected $secondImage;
+
+  public function setUp() {
+    parent::setUp('image_entity_alt');
+    field_create_field(array('field_name' => 'field_alt', 'type' => 'text'));
+    field_create_instance(array(
+      'field_name' => 'field_alt', 'entity_type' => 'file', 'bundle' => 'image',
+      'label' => 'Global ALT', 'settings' => array('text_processing' => 0),
+    ));
+    field_create_field(array('field_name' => 'field_photos', 'type' => 'image', 'cardinality' => -1));
+    field_create_instance(array(
+      'field_name' => 'field_photos', 'entity_type' => 'node', 'bundle' => 'post',
+      'label' => 'Photos', 'settings' => array('alt_field' => 1),
+      'widget' => array('type' => 'image_image'),
+      'display' => array('default' => array('type' => 'image')),
+    ));
+    $images = $this->backdropGetTestFiles('image');
+    $this->image = new File(array(
+      'uri' => $images[0]->uri, 'filename' => 'first.png', 'filemime' => 'image/png',
+      'type' => 'image', 'status' => FILE_STATUS_PERMANENT, 'uid' => 1,
+      'field_alt' => array(LANGUAGE_NONE => array(array('value' => 'A & "B"'))),
+    ));
+    file_save($this->image);
+    $this->secondImage = new File(array(
+      'uri' => $images[1]->uri, 'filename' => 'second.png', 'filemime' => 'image/png',
+      'type' => 'image', 'status' => FILE_STATUS_PERMANENT, 'uid' => 1,
+      'field_alt' => array(LANGUAGE_NONE => array(array('value' => 'Second image'))),
+    ));
+    file_save($this->secondImage);
+  }
+
+  protected function createImageNode($alt = '') {
+    return $this->backdropCreateNode(array(
+      'type' => 'post',
+      'field_photos' => array(LANGUAGE_NONE => array(
+        array('fid' => $this->image->fid, 'alt' => $alt),
+        array('fid' => $this->secondImage->fid, 'alt' => ''),
+      )),
+    ));
+  }
+
+  public function testRenderingAndOptOut() {
+    $node = $this->createImageNode();
+    $build = field_view_field('node', $node, 'field_photos');
+    $html = backdrop_render($build);
+    $this->assertTrue(strpos($html, 'alt="A &amp; &quot;B&quot;"') !== FALSE, 'Raw ALT is escaped exactly once.');
+    $this->assertTrue(strpos($html, 'alt="Second image"') !== FALSE, 'Second delta receives its own fallback.');
+    $node->field_photos[LANGUAGE_NONE][0]['alt'] = '0';
+    $build = field_view_field('node', $node, 'field_photos');
+    $this->assertTrue(strpos(backdrop_render($build), 'alt="0"') !== FALSE, 'Zero is an explicit override.');
+
+    $instance = field_info_instance('node', 'field_photos', 'post');
+    $instance['settings']['image_entity_alt'] = 0;
+    field_update_instance($instance);
+    $node->field_photos[LANGUAGE_NONE][0]['alt'] = '';
+    $build = field_view_field('node', $node, 'field_photos');
+    $this->assertTrue(strpos(backdrop_render($build), 'alt=""') !== FALSE, 'Opted-out fields retain empty ALT.');
+
+    $build = file_view($this->image);
+    $this->assertTrue(strpos(backdrop_render($build), 'alt="A &amp; &quot;B&quot;"') !== FALSE, 'Actual rendered file uses global ALT.');
+    $build = array('#file' => $this->image, '#language' => LANGUAGE_NONE, 'file' => array('#alt' => '0'));
+    image_entity_alt_file_view_alter($build);
+    $this->assertIdentical($build['file']['#alt'], '0', 'Explicit file display ALT is preserved.');
+  }
+
+  public function testWidgetSaveAndOverrides() {
+    $account = $this->backdropCreateUser(array('access content', 'edit any post content', 'administer nodes'));
+    $this->backdropLogin($account);
+    $node = $this->createImageNode('Existing override');
+    $this->backdropGet('node/' . $node->nid . '/edit');
+    $this->assertFieldByName('field_photos[und][0][alt]', 'Existing override', 'Existing override survives form construction.');
+    $this->assertFieldByName('field_photos[und][1][alt]', 'Second image', 'Second widget prefills its own ALT.');
+    $this->backdropPost(NULL, array(), t('Save'));
+    $saved = node_load($node->nid, NULL, TRUE);
+    $this->assertIdentical($saved->field_photos[LANGUAGE_NONE][0]['alt'], 'Existing override', 'Saving preserves the override.');
+    $this->assertIdentical($saved->field_photos[LANGUAGE_NONE][1]['alt'], '', 'Saving does not duplicate the fallback.');
+
+    $instance = field_info_instance('node', 'field_photos', 'post');
+    $instance['settings']['image_entity_alt'] = 0;
+    field_update_instance($instance);
+    $this->backdropGet('node/' . $node->nid . '/edit');
+    $this->assertFieldByName('field_photos[und][1][alt]', '', 'Opted-out widget stays empty.');
+    $this->backdropPost(NULL, array('field_photos[und][1][alt]' => 'Second image'), t('Save'));
+    $saved = node_load($node->nid, NULL, TRUE);
+    $this->assertIdentical($saved->field_photos[LANGUAGE_NONE][1]['alt'], 'Second image', 'Opted-out widget saves matching ALT.');
+  }
+
+  public function testEditorAndSettings() {
+    $account = $this->backdropCreateUser(array('administer site configuration', 'administer filters', 'upload editor images'));
+    $this->backdropLogin($account);
+    $this->backdropGet('admin/config/media/image-entity-alt');
+    $this->assertFieldByName('alt_field_name', 'field_alt', 'Settings default to field_alt.');
+    field_create_field(array('field_name' => 'field_description', 'type' => 'text'));
+    field_create_instance(array(
+      'field_name' => 'field_description', 'entity_type' => 'file', 'bundle' => 'image',
+      'label' => 'Description', 'settings' => array('text_processing' => 0),
+    ));
+    $this->backdropPost('admin/config/media/image-entity-alt', array('alt_field_name' => 'field_description'), t('Save configuration'));
+    $this->assertEqual(config_get('image_entity_alt.settings', 'alt_field_name'), 'field_description', 'Settings save through core.');
+    $this->assertIdentical(image_entity_alt_file_alt($this->image), '', 'An empty configured field has no fallback.');
+    $this->image->field_description[LANGUAGE_NONE][0]['value'] = 'Configured ALT';
+    file_save($this->image);
+    $this->assertIdentical(image_entity_alt_file_alt($this->image), 'Configured ALT', 'Configured field is read.');
+
+    module_load_include('inc', 'filter', 'filter.pages');
+    $format = filter_format_load('filtered_html');
+    $form_state = form_state_defaults();
+    $form_state['input']['editor_object'] = array('data-file-id' => $this->image->fid, 'alt' => '');
+    $form_state['build_info']['args'] = array($format);
+    $form = backdrop_build_form('filter_format_editor_image_form', $form_state);
+    $this->assertIdentical($form['alt']['#value'], 'Configured ALT', 'Actual core editor dialog prefills managed file ALT.');
+    $form_state = form_state_defaults();
+    $form_state['input']['editor_object'] = array('data-file-id' => $this->image->fid, 'alt' => '0');
+    $form_state['build_info']['args'] = array($format);
+    $form = backdrop_build_form('filter_format_editor_image_form', $form_state);
+    $this->assertIdentical($form['alt']['#value'], '0', 'Editor preserves explicit zero ALT.');
+    $form['alt']['#value'] = '';
+    $form_state['input']['attributes']['alt'] = '';
+    $form = image_entity_alt_editor_after_build($form, $form_state);
+    $this->assertIdentical($form['alt']['#value'], '', 'Editor preserves submitted decorative ALT.');
+  }
+}
