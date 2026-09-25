@@ -77,3 +77,6 @@ Image field settings include "Use global ALT text from the file entity", enabled
 by default. Disable it for fields that need to keep empty ALT. Core image widgets
 apply this setting to each image and preserve nonempty local overrides. Only an
 exact match to the fallback is removed on save.
+
+Rendered image file entities use the configured ALT field when their image
+formatter ALT is empty. Explicit display or attribute overrides take precedence.
