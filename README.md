@@ -80,3 +80,6 @@ exact match to the fallback is removed on save.
 
 Rendered image file entities use the configured ALT field when their image
 formatter ALT is empty. Explicit display or attribute overrides take precedence.
+
+Additional field-rendering hardening handles all image deltas, preserves nonempty
+overrides (including `0`), and passes raw ALT to the image theme for escaping.

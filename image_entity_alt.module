@@ -5,23 +5,22 @@
  */
 
 /**
- * Prepare variables for field templates.
- * - Updates the ALT text on image fields to pull from the file entity field.
- * - Falls back to
- *
- * @see field.tpl.php
+ * Implements hook_preprocess_field().
  */
 function image_entity_alt_preprocess_field(&$variables) {
-  if ($variables['element']['#field_type'] == 'image') {
-    $element = $variables['element'];
-    if (!image_entity_alt_instance_enabled($element['#entity_type'], $element['#field_name'], $element['#bundle'])) {
-      return;
-    }
-    $lang = LANGUAGE_NONE;
-    $alt_field = image_entity_alt_field_name();
+  $element = $variables['element'];
+  if ($element['#field_type'] !== 'image' || !image_entity_alt_instance_enabled($element['#entity_type'], $element['#field_name'], $element['#bundle'])) {
+    return;
+  }
 
-    $alt = $variables['element']['#items'][0][$alt_field][$lang][0]['safe_value'];
-    $variables['items'][0]['#item']['alt'] = $alt;
+  foreach ($variables['items'] as $delta => &$item) {
+    if (isset($item['#item']) && (!isset($item['#item']['alt']) || $item['#item']['alt'] === '') && !empty($element['#items'][$delta]['fid'])) {
+      $file = file_load($element['#items'][$delta]['fid']);
+      if ($file) {
+        // The image theme escapes the attribute; safe_value would escape twice.
+        $item['#item']['alt'] = image_entity_alt_file_alt($file, $element['#language']);
+      }
+    }
   }
 }
 
