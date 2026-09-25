@@ -72,3 +72,8 @@ See the LICENSE.txt file in this directory for complete text.
 
 Editor image dialogs prefill ALT for managed images. Submitted text, including
 empty decorative ALT, is preserved. Existing embedded HTML is not rewritten.
+
+Image field settings include "Use global ALT text from the file entity", enabled
+by default. Disable it for fields that need to keep empty ALT. Core image widgets
+apply this setting to each image and preserve nonempty local overrides. Only an
+exact match to the fallback is removed on save.

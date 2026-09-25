@@ -12,8 +12,11 @@
  * @see field.tpl.php
  */
 function image_entity_alt_preprocess_field(&$variables) {
-  // @todo - build a UI to select all vs some fields.
   if ($variables['element']['#field_type'] == 'image') {
+    $element = $variables['element'];
+    if (!image_entity_alt_instance_enabled($element['#entity_type'], $element['#field_name'], $element['#bundle'])) {
+      return;
+    }
     $lang = LANGUAGE_NONE;
     $alt_field = image_entity_alt_field_name();
 
@@ -22,57 +25,7 @@ function image_entity_alt_preprocess_field(&$variables) {
   }
 }
 
-/**
- * Implements hook_form_FORM_ID_alter().
- */
-function image_entity_alt_form_node_form_alter(&$form, &$form_state) {
-  // @todo - build a UI to select all vs some fields.
-  $image_fields = field_read_fields(array('type' => 'image'));
-  $image_field_names = array_keys($image_fields);
-  $form['image_entity_alts'] = array(
-    '#type' => 'value',
-    '#value' => array_fill_keys($image_field_names, ''),
-  );
 
-  $lang = LANGUAGE_NONE;
-  $alt_field = image_entity_alt_field_name();
-
-  $form_keys = array_keys($form);
-  foreach ($form_keys as $key) {
-    $field_name = $key;
-    if (in_array($field_name, $image_field_names)) {
-      foreach ($form[$field_name][$lang] as $delta => $image) {
-        if (isset($image['#default_value'][$alt_field])) {
-                $file_alt = $image['#default_value'][$alt_field][$lang][0]['safe_value'];
-          $form['image_entity_alts']['#value'][$field_name] = $file_alt;
-          $form[$field_name][$lang][$delta]['#default_value']['alt'] = $file_alt;
-        }
-      }
-    }
-  }
-
-  $form['#validate'][] = 'image_entity_alt_form_node_form_validate';
-}
-
-/**
- * Validate handler. Do not save File entity values in node instance.
- *
- * @see image_entity_alt_form_node_form_alter.
- */
-function image_entity_alt_form_node_form_validate(&$form, &$form_state) {
-  $lang = LANGUAGE_NONE;
-  $image_entity_alts = $form_state['values']['image_entity_alts'];
-
-  $value_keys = array_keys($form_state['values']);
-  foreach ($value_keys as $key) {
-    if (array_key_exists($key, $image_entity_alts)) {
-      $submitted = trim($form_state['values'][$key][$lang][0]['alt']);
-      if ($submitted == trim($image_entity_alts[$key])) {
-        $form_state['values'][$key][$lang][0]['alt'] = '';
-      }
-    }
-  }
-}
 
 /**
  * Returns the machine name of the file-entity field that stores ALT text.
@@ -146,4 +99,83 @@ function image_entity_alt_editor_after_build($form, &$form_state) {
     form_set_value($form['alt'], $alt, $form_state);
   }
   return $form;
+}
+
+/**
+ * Returns TRUE when the given image field instance should use file-entity ALT.
+ *
+ * Defaults to TRUE so existing fields keep working. See issue #3.
+ */
+function image_entity_alt_instance_enabled($entity_type, $field_name, $bundle) {
+  $instance = field_info_instance($entity_type, $field_name, $bundle);
+  if ($instance && isset($instance['settings']['image_entity_alt'])) {
+    return (bool) $instance['settings']['image_entity_alt'];
+  }
+  return TRUE;
+}
+
+/**
+ * Implements hook_field_widget_form_alter().
+ */
+function image_entity_alt_field_widget_form_alter(&$element, &$form_state, $context) {
+  $instance = $context['instance'];
+  if ($context['field']['type'] !== 'image' || !image_entity_alt_instance_enabled($instance['entity_type'], $instance['field_name'], $instance['bundle'])) {
+    return;
+  }
+
+  // Core's image widget handles its own deltas, including AJAX rebuilds.
+  foreach (element_children($element) as $delta) {
+    if (isset($element[$delta]['#process']) && in_array('image_field_widget_process', $element[$delta]['#process'])) {
+      $element[$delta]['#process'][] = 'image_entity_alt_widget_process';
+    }
+  }
+}
+
+/**
+ * Supplies the fallback after core builds the image widget's ALT element.
+ */
+function image_entity_alt_widget_process($element, &$form_state, $form) {
+  if (empty($element['fid']['#value']) || !isset($element['alt'])) {
+    return $element;
+  }
+  $file = file_load($element['fid']['#value']);
+  if (!$file) {
+    return $element;
+  }
+  $alt = image_entity_alt_file_alt($file, $element['#language']);
+  if ($alt !== '' && $element['alt']['#default_value'] === '') {
+    $element['alt']['#default_value'] = $alt;
+  }
+  // Child validation (including required ALT) runs before this callback.
+  $element['#image_entity_alt'] = $alt;
+  $element['#element_validate'][] = 'image_entity_alt_widget_validate';
+  return $element;
+}
+
+/**
+ * Avoids storing a copy of the fallback on the referencing entity.
+ */
+function image_entity_alt_widget_validate($element, &$form_state) {
+  if (isset($element['alt']['#value']) && $element['alt']['#value'] === $element['#image_entity_alt']) {
+    form_set_value($element['alt'], '', $form_state);
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for field_ui_field_edit_form().
+ *
+ * Adds a per-instance checkbox to opt an image field in or out of file-entity
+ * ALT replacement. See issue #3.
+ */
+function image_entity_alt_form_field_ui_field_edit_form_alter(&$form, &$form_state) {
+  if ($form['#field']['type'] == 'image') {
+    $instance = $form['#instance'];
+    $form['instance']['settings']['image_entity_alt'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Use global ALT text from the file entity'),
+      '#default_value' => isset($instance['settings']['image_entity_alt']) ? $instance['settings']['image_entity_alt'] : TRUE,
+      '#description' => t('If checked, the ALT text for this field is pulled from the file entity when the per-instance ALT text is empty.'),
+      '#weight' => 12,
+    );
+  }
 }
