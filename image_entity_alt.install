@@ -1,0 +1,13 @@
+<?php
+
+/**
+ * @file
+ * Install and uninstall functions for image_entity_alt.
+ */
+
+/**
+ * Implements hook_uninstall().
+ */
+function image_entity_alt_uninstall() {
+  config('image_entity_alt.settings')->delete();
+}
