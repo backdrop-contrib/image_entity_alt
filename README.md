@@ -69,3 +69,6 @@ it.
 
 This project is GPL v2 software.
 See the LICENSE.txt file in this directory for complete text.
+
+Editor image dialogs prefill ALT for managed images. Submitted text, including
+empty decorative ALT, is preserved. Existing embedded HTML is not rewritten.
