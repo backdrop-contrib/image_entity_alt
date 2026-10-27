@@ -1,0 +1,5 @@
+[ImageEntityAltTestCase]
+name = Image entity ALT integration
+description = Tests configurable ALT, field overrides, widgets, and rendered files.
+group = Image entity ALT
+file = image_entity_alt.test
